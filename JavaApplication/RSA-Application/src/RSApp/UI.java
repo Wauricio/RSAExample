@@ -230,11 +230,12 @@ public class UI extends javax.swing.JFrame {
                 Rsa c= new Rsa(pbk,pvk);
                 if(jComboBox1.getSelectedItem().toString().equalsIgnoreCase("cipher")){
                     
-                    Rsa.encrypt(file, jTextField4.getText(), c.getPublicKey(),c.getPrivateKey());
-                    
+                   // Rsa.encrypt(file, jTextField4.getText(), c.getPublicKey(),c.getPrivateKey());
+                    Rsa.cipherFile(file,jTextField4.getText(), c.getPublicKey(), c.getPrivateKey());
                 }else{
                     //Authenticate sender
-                    if(Rsa.decrypt(file, jTextField4.getText(), c.getPrivateKey(), c.getPublicKey())){
+                    if(Rsa.decipherFile(file, jTextField4.getText(),  c.getPrivateKey(), c.getPublicKey())){
+                        
                         JOptionPane.showMessageDialog(this,
                     "Your Message!","The Sender was Correct!",
                     JOptionPane.INFORMATION_MESSAGE);

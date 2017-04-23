@@ -5,6 +5,8 @@
  */
 package RSApp;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -15,13 +17,12 @@ import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.security.*;
-import java.util.Base64;
-
-import static java.nio.charset.StandardCharsets.UTF_8;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import javax.crypto.BadPaddingException;
 import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
 
 
 public class Rsa {
@@ -29,6 +30,8 @@ public class Rsa {
   public static final String ALGORITHM = "RSA";
   public static final String PRIVATE_KEY_FILE = "privateC.key";
   public static final String PUBLIC_KEY_FILE = "publicC.key";
+  public static final int bufSize=240;
+  public static final int bufSizeDe=256;
     private PublicKey publicKey;
     private PrivateKey privateKey;
     
@@ -116,36 +119,6 @@ public class Rsa {
         return new KeyPair(publicKey, privateKey);
     }*/
 
-    public static void encrypt(String inFile,String outFile, PublicKey publicKey,PrivateKey privateKey) throws NoSuchAlgorithmException, InvalidKeyException, IOException, IllegalBlockSizeException, Exception  {
-        Cipher encryptCipher = Cipher.getInstance("RSA");
-        encryptCipher.init(Cipher.ENCRYPT_MODE, publicKey);
-        byte data[]=readFile(inFile);
-        byte[] cipherText = encryptCipher.doFinal(data);
-        writeObjct(outFile,new Object[]{cipherText,sign(data,privateKey)});
-       // System.out.println("Encrypted text:"+new String(cipherText));
-        //writeFile(cipherText,outFile);
-        //writeFile(cipherText,outFile);
-        //return Base64.getEncoder().encodeToString(cipherText);
-    }
-
-    public static boolean decrypt(String inFile,String outFile, PrivateKey privateKey,PublicKey publicKey) throws IOException, NoSuchAlgorithmException, InvalidKeyException, IllegalBlockSizeException, Exception {
-        
-       Object[] o= readObjects(inFile);
-       byte[] bytes=(byte[])o[0];
-       byte[] sign = (byte[])o[1];
-      //byte[] bytes=Base64.getDecoder().decode(readFile(inFile));
-      //byte[] bytes=readFile(inFile);
-       // byte[] bytes = Base64.getDecoder().decode(cipherText);
-        Cipher decriptCipher = Cipher.getInstance("RSA");
-        decriptCipher.init(Cipher.DECRYPT_MODE, privateKey);
-       bytes= decriptCipher.doFinal(bytes);
-       // System.out.println("Decryped Text :"+ new String(bytes, UTF_8)); 
-        //System.out.println("Signature correct: " + verify(bytes,sign,publicKey));
-          writeFile(bytes,outFile);
-       
-        return verify(bytes,sign,publicKey);
-    }
-
     public static byte[] sign(byte[] inData, PrivateKey privateKey) throws Exception {
         Signature privateSignature = Signature.getInstance("SHA256withRSA");
         privateSignature.initSign(privateKey);
@@ -153,9 +126,6 @@ public class Rsa {
         privateSignature.update(inData);
 
        return privateSignature.sign();
-        //writeFile(signature,outFile);
-
-       // return Base64.getEncoder().encodeToString(signature);
     }
 
     public static boolean verify(byte[] indata, byte[] inSign, PublicKey publicKey) throws Exception {
@@ -171,20 +141,15 @@ public class Rsa {
           fileOuputStream.close();
     }
     
-    public static byte[] readFile(String name) throws IOException{
-          Path path = Paths.get(name);
-          return  Files.readAllBytes(path);
-    }
-    public static void writeObjct(String filename,Object[] objs) throws FileNotFoundException, IOException{
+    public static void writeObjct(String filename,Object ob) throws FileNotFoundException, IOException{
         FileOutputStream f = new FileOutputStream(new File(filename));
         ObjectOutputStream o = new ObjectOutputStream(f);
-	for(Object ob : objs)
-            o.writeObject(ob);
+        o.writeObject(ob);
         o.close();
         f.close();
     }
     
-    public static Object[] readObjects(String filename) throws FileNotFoundException, IOException, ClassNotFoundException{
+    public static Object[] readObjects2(String filename) throws FileNotFoundException, IOException, ClassNotFoundException{
         FileInputStream fi = new FileInputStream(new File(filename));
         ObjectInputStream oi = new ObjectInputStream(fi);
 	Object[] o=new Object[]{oi.readObject(),oi.readObject()};
@@ -192,35 +157,69 @@ public class Rsa {
 	fi.close();
         return o;
     }
+    public static Object readObject(String filename) throws FileNotFoundException, IOException, ClassNotFoundException{
+        FileInputStream fi = new FileInputStream(new File(filename));
+        ObjectInputStream oi = new ObjectInputStream(fi);
+	Object o= oi.readObject();
+        oi.close();
+	fi.close();
+        return o;
+    }
+    
+    
+    
+    public  static void cipherFile(String name ,String outname,PublicKey publicKey , PrivateKey privateKey) throws IOException, InvalidKeyException, NoSuchAlgorithmException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, Exception{
+       Cipher encryptCipher = Cipher.getInstance("RSA");
+        encryptCipher.init(Cipher.ENCRYPT_MODE, publicKey);
+        ByteArrayOutputStream ous = null;
+        InputStream ios = null;
+         byte[] buffer = new byte[bufSize];
+        byte[] cipherData;
+        ous = new ByteArrayOutputStream();
+        ios = new FileInputStream(new File(name));
+        while ((ios.read(buffer)) != -1) {
+            cipherData=encryptCipher.doFinal(buffer);
+            ous.write(cipherData, 0, cipherData.length);
+        }
+        Message m = new Message(ous.toByteArray(),sign(ous.toByteArray(),privateKey),".txt");
+        writeObjct(outname,m);   
+    }
+    
+    public  static boolean decipherFile(String name ,String outname,PrivateKey privateKey,PublicKey publicKey) throws NoSuchAlgorithmException, InvalidKeyException, FileNotFoundException, IOException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, ClassNotFoundException, Exception{
+        Cipher encryptCipher = Cipher.getInstance("RSA");
+        encryptCipher.init(Cipher.DECRYPT_MODE, privateKey); 
+        Message m = (Message)readObject(name);
+        ByteArrayOutputStream ous  = new ByteArrayOutputStream();
+        InputStream ios= new ByteArrayInputStream(m.getMessage());;
+        byte[] buffer = new byte[bufSizeDe];
+        byte[] decipherData;
+        while ((ios.read(buffer)) != -1) {
+            decipherData=encryptCipher.doFinal(buffer);
+            ous.write(decipherData, 0, decipherData.length);
+        }
+        writeFile(ous.toByteArray(),outname);
+        return verify(m.getMessage(),m.getSign(),publicKey);
+    }
+    
+    
+    
+    public static void main(String argv[]) throws Exception {
+     
+        
+    //generateKey();
+        
+         //First generate a public/private key pair
+        KeyPair pair = generateKeyPair();
+        
+        cipherFile ("test.bmp","outf.bmp",pair.getPublic(),pair.getPrivate()); 
+        
+        
+        System.out.println(decipherFile("outf.bmp","outDs.bmp",pair.getPrivate(),pair.getPublic()));
+        
+        }
+    }
+    
     
     
   
-    public static void main(String... argv) throws Exception {
-       generateKey();
-        
-        /* //First generate a public/private key pair
-        KeyPair pair = generateKeyPair();
-        //KeyPair pair = getKeyPairFromKeyStore();
-
-        //Our secret message
-        String message = "Hola Como Estas";
-
-        //Encrypt the message
-        encrypt("hola.txt","outObjet.txt", pair.getPublic(),pair.getPrivate());
-
-        //Now decrypt it
-         decrypt("outObjet.txt","finaltext.txt", pair.getPrivate(),pair.getPublic());
-
-        //System.out.println(decipheredMessage);
-
-        //Let's sign our message
-        //System.out.println("message>len:"+message.length());
-        //String signature = sign(message, pair.getPrivate());
-        //sign("hola.txt","sign.txt", pair.getPrivate());
-        //System.out.println("sig:"+signature);
-        //Let's check the signature
-        //boolean isCorrect = verify("finaltext.txt","sign.txt", pair.getPublic());
-        //System.out.println("Signature correct: " + isCorrect);
-        */
-    }
-}
+    
